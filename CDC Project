@@ -1,0 +1,154 @@
+---
+title: "Project 2: How does sexual orientation affect mental health and likelihood to use substances?"
+author: "Ryan Papaioannou, Margaret Crawford, Keegan McCann, Caitlin Bedway"
+date: "2025-10-29"
+output: html_document
+---
+
+Here is the R code we used to find confidence intervals and hypothesis testing for our question of interest. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Code to import packages and data and ensure data is properly imported
+```{r, message = FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(infer)
+
+set.seed(6967420)
+
+data <- read_csv("project2_data.csv")
+```
+
+This makes the object "data" just show the variables we are interested in, and takes out all NA responses
+```{r}
+data <- data |> select("AGE", "SEX", "SEXORIEN", "DEPRESSEV", "ANXIETYEV", "ECIGSTATUS") |> 
+  na.exclude()
+```
+
+This changes the ECIGSTATUS responses to "user" and "nonuser" instead of "Current", "Former", and "Never", Just to consolidate people who have ever used e-cigarettes.
+
+```{r}
+data$ECIGSTATUS <- ifelse(data$ECIGSTATUS %in% c("Current", "Former"), "user", "nonuser")
+```
+
+This changes the SEXORIEN responses to "queer" and "straight" instead of "Gay/Lesbian", "Bisexual", "Something else", or "Straight", again to consolidate our data into 2 groups we can compare.
+
+```{r}
+data$SEXORIEN <- ifelse(data$SEXORIEN %in% c("Something else", "Bisexual", "Gay/Lesbian"),"queer","straight")
+```
+
+CI for The difference in e-cigarette use between straight and queer individuals,
+using percentile method.
+
+Here we are filtering our data to make it more usable for this section, then creating a bootstrap distribution for the ecig usage and creating a confidence interval.
+
+```{r}
+ecig_data <- data |> 
+  select("SEXORIEN","ECIGSTATUS")
+
+summarize(data, 
+          mean(ECIGSTATUS == "user"),
+          .by = "SEXORIEN")
+ecig_phat = 0.368 - 0.161
+ecig_phat
+
+ecig_boot <- ecig_data |> 
+  specify(formula = ECIGSTATUS ~ SEXORIEN, success = "user") |> 
+  generate(reps = 1000, type = "bootstrap") |> 
+  calculate(stat = "diff in props", order = c("queer", "straight"))
+
+```
+
+Our point estimate is 0.207.
+We want to use a confidence interval rather than just our point estimate because it gives us more information about where the true population proportion could lie. Additionally, we are using a 95% confidence level.
+
+```{r}
+ecig_ci <- ecig_boot |> 
+  get_ci(level = 0.95, type = "percentile")
+ecig_ci
+visualize(ecig_boot) +
+  shade_ci(ecig_ci)
+```
+
+Our bootstrap distribution is symmetrical and normally distributed. We can use this graph to show our confidence interval.
+
+Both endpoints are positive, so we are 95% confident that the population proportion of e-cigarette users is between 0.180 and 0.236 percentage points higher for queer individuals than for straight individuals.
+
+
+Hypothesis Testing:
+
+
+
+We are using two sets of hypotheses:
+Null Hypothesis: There is no difference in anxiety levels between queer and straight people
+Alternative Hypothesis: There are higher levels of anxiety in queer people than straight people
+Null Hypothesis: There is no difference in depression levels between queer and straight people
+Alternative Hypothesis: There are higher levels of depression in queer people than straight people
+
+Additionally, we are using an $\alpha$ of 0.05.
+
+Hypothesis testing code for anxiety:
+
+```{r}
+ggplot(data = data) +
+  geom_bar(aes(x = SEXORIEN, fill = ANXIETYEV), position = "fill") +
+  xlab("Sexual Orientation") +
+  ylab("Proportion")
+
+anxiety_diff <- data |> 
+  specify(formula = ANXIETYEV ~ SEXORIEN, success = "Yes") |>
+  hypothesize(null = "independence") |> 
+  generate(reps = 1000, type = "permute") |> 
+  calculate(stat = "diff in props", order = c("queer", "straight"))
+anxiety_phat <- mean(data$ANXIETYEV == "Yes")
+visualize(anxiety_diff) +
+  shade_pvalue(obs_stat = anxiety_phat, direction = "right")
+```
+
+
+
+Hypothesis testing code for depression:
+```{r}
+ggplot(data = data) +
+  geom_bar(aes(x = SEXORIEN, fill = DEPRESSEV), position = "fill") +
+  xlab("Sexual Orientation") +
+  ylab("Proportion")
+
+depression_diff <- data |> 
+  specify(formula = DEPRESSEV ~ SEXORIEN, success = "Yes") |>
+  hypothesize(null = "independence") |> 
+  generate(reps = 1000, type = "permute") |> 
+  calculate(stat = "diff in props", order = c("queer", "straight"))
+depression_phat <- mean(data$DEPRESSEV == "Yes")
+visualize(depression_diff) +
+  shade_pvalue(obs_stat = depression_phat, direction = "right")
+
+```
+
+This calculates the p-value for both the anxiety and depression hypothesis tests and creates our visualizations.
+
+```{r}
+anxiety_pvalue <- anxiety_diff |> 
+  get_pvalue(obs_stat = anxiety_phat,
+             direction = "right")
+
+depression_pvalue <- depression_diff |> 
+  get_pvalue(obs_stat = depression_phat,
+             direction = "right")
+anxiety_pvalue
+depression_pvalue
+```
+
+P value interpretations:
+We would have less than a 0.0001% chance of getting the results we did under the null circumstances for both hypotheses.
+
+Formal conclusion for anxiety:
+With a p-value of less than 0.0001, we can reject our null hypothesis. There is significant evidence that queer individuals have higher rates of anxiety than straight individuals.
+
+Formal conclusion for depression:
+With a p-value of less than 0.0001, we can reject our null hypothesis. There is significant evidence that queer individuals have higher rates of depression than straight individuals.
+
